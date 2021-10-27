@@ -15,4 +15,6 @@ I couldn't help him but I figured it would be good to pratically apply some know
 
 ## 0.1 The challenge
 
-The zip contains the challenge binary and source code
+Thankfully to the author, the zip contains binaries, source code and dockerfile to reproduce the same environment as the remote one.
+
+<center> <img src="./images/intro-dist-files.png" width="50%"><center/><br/>
