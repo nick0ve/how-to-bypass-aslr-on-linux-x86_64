@@ -20,7 +20,17 @@ Thankfully to the author, the zip contains binaries, source code and dockerfile 
 
 By scrolling through the files we can notice some useful things:
 
-- jail.cfg restrictions <br> <img src="./images/intro-jailcfg.png" width="50%">
-- lol
+- jail.cfg restrictions to keep in mind, since those things might screw up our exploit:
+  - time_limit: 300
+  - cgroup_cpu_ms_per_sec: 100
+  - cgroup_pids_max: 64
+  - rlimit_fsize: 2048
+  - rlimit_nofile: 2048
+  - cgroup_mem_max: 1073741824
+- Dockerfile build the binary source from scratch:```WORKDIR /home/ctf/challenge/src/
+RUN mkdir -p src/build && cd src/build && cmake .. && make
+RUN cp src/build/flag_server-exe src/build/libkylezip.so flag.txt /home/ctf/challenge/
+```
+- a
 
-lol
+mh
