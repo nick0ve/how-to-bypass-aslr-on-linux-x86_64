@@ -6,8 +6,7 @@ To show this I'm gonna solve a pwnable challenge from [Buckeye CTF](https://ctf.
 I'll try to keep the content as beginner friendly as possible, so feel free to skip any section if you feel confident enough and just want to see the conclusion.
 
 # 0. Introduction
-
-<img src="./images/intro-chall-description.png"><br/>
+<p align="center"><img src="./images/intro-chall-description.png"></p><br/>
 
 I didn't play the CTF, but I got interested in the challenge about 2hrs before the ctf end thanks to [Guray00](https://github.com/Guray00), who was begging help in [fibonhack](https://twitter.com/fibonhack) discord about some crypto shenanigans. 
 
@@ -17,4 +16,4 @@ I couldn't help him but I figured it would be good to pratically apply some know
 
 Thankfully to the author, the zip contains binaries, source code and dockerfile to reproduce the same environment as the remote one.
 
-<center> <img src="./images/intro-dist-files.png" width="50%"><center/><br/>
+<p align="center"> <img src="./images/intro-dist-files.png" width="50%"><p/> <br/>
