@@ -1,4 +1,4 @@
-# guess_god writeup
+# Breaking 64 bit aslr on Linux x86-64
 
 In this article, I'll discuss about the application of the technique described by [Samuel Groß](https://twitter.com/5aelo) in his [Remote iPhone Exploitation Part 2: Bringing Light into the Darkness -- a Remote ASLR Bypass](https://googleprojectzero.blogspot.com/2020/01/remote-iphone-exploitation-part-2.html), to bypass ASLR on Linux x86_64. 
 
@@ -24,13 +24,13 @@ Thankfully to the author, the zip contains binaries, source code and dockerfile 
 Before jumping into the challenge, It's always a good thing to grasp some knowledge about the environment, let's scroll through the files and take some notes.
 
 * jail.cfg set some restrictions, let's not forget about those limits since they might screw up the exploit:
-  ```
+  ```yaml
   time_limit: 300
   cgroup_cpu_ms_per_sec: 100
   cgroup_pids_max: 64
   rlimit_fsize: 2048
   rlimit_nofile: 2048
-  cgroup_mem_max: 1073741824
+  cgroup_mem_max: 1073741824 # 1GB
   ```
 
 * From the Dockerfile we can learn some interesting things:
@@ -115,19 +115,18 @@ Of course we can't copy paste this technique to Linux and expect it to work, in 
 
 Given: 
 * a range of possible addresses `[a,b]`
-* a memory spraying technique that let you map contiguous memory of size `s`, in the range `[a,b]`
-* an oracle which tells you wether an address is mapped or not 
+* a memory spraying technique that let you map contiguous memory of size `size`, in the range `[a,b]`
+* an isAddressMapped oracle 
 
 then in order to find a mapped address you can do this linear scan:
 ```python
-start = a
-for addr in range(a, b, size):
-    if isMappedOracle(addr) == True:
-        print (f"Found mapped address: {addr:#x}")
+for probeAddr in range(a, b, size):
+    if isAddrMapped(probeAddr) == True:
+        print (f"Found mapped address: {probeAddr:#x}")
         break
 ```
 
-for a total of `(a - b) / size` queries.
+for a total of `numOfQueries = (b - a + 1) / size` queries.
 
 ## 1.1 Memory mappings on linux usermode applications
 
@@ -146,13 +145,39 @@ Well, if you do this a couple of times, you will be confident enough of those th
 * The binary PIE base can be in the range 0x00005500_00000000-0x00005700_00000000, that means 2TB of possible addresses.
 * The heap is near the binary.
 * Libraries are in the range 0x00007f00_00000000 - 0x00007fff_ffffffff, for a total of 1TB of possible addresses.
-* Stack goes in the range 7fff_00000000 - 7fff_ffffffff, for a total of only 4gb of possible addresses, well that's weaker.
+* Stack goes in the range 0x00007fff_00000000 - 0x00007fff_ffffffff, for a total of only 4gb of possible addresses, well that's weaker.
 * The range 0xffffffffff600000 - 0xffffffffff601000 is always mapped, you can read [this article](http://terenceli.github.io/%E6%8A%80%E6%9C%AF/2019/02/13/vsyscall-and-vdso) if you are curious about it.
 
 
 
-## 1.2 Applicability of memory spraying + linear scan given those random maps
+## 1.2 Applicability of memory spraying + linear scan
 
+Given those not so randomly looking memory mappings, we can calculate some .
+
+```py
+def getNumberOfQueries(a, b, size):
+    return (b - a + 1) // size
+
+a = 0x00007f00_00000000
+b = 0x00007fff_ffffffff
+
+
+size = 0x00000001_00000000 # 4gb of contiguous allocation
+print (getNumberOfQueries(a, b, size)) # 256
+```
+
+Ok, that's good, we can find a mapped address with just 256 queries!
+Let's try to visualize what is happening:
+
+| probeAddr    | |
+| -  | - | 
+| 7f00_00000000| +4gb
+| 7f01_00000000| +4gb
+| 7f02_00000000| +4gb
+| ...|
+| 7fff_00000000|
+
+We are basically bruteforcing the 5th byte of the address, exploiting the fact that there must be a contiguous range of memory which is 4gb long. Don't worry if that's not clear enough for now, we're gonna try this on a real target.
 
 # 2. Source code analysis
 <p align="center"> <img src="./images/source-code-folder.png" width="50%"><br/> <i></i><p/> 
