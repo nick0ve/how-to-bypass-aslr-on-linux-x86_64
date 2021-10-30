@@ -11,17 +11,171 @@ I'll try to keep the content as beginner friendly as possible, so feel free to s
 
 I didn't play the CTF, but I got interested in the challenge about 2hrs before the ctf end thanks to [Guray00](https://github.com/Guray00), who was asking for help in [fibonhack](https://twitter.com/fibonhack) discord about some crypto shenanigans. 
 
-I couldn't help him, but I took a look at pwnable challenges, and figured it would be good to pratically apply some knowledge gathered by the reading of a P0 entry and hopefully get that bounty.
+I couldn't help him, but I took a look at pwnable challenges, and figured it would be good to understand the P0 blogpost and hopefully get that bounty.
 
-## 0.1 The challenge
+# 1. ASLR and how to bypass it
+
+## 1.1 What is ASLR?
+**Address Space Layout Randomization** (ASLR) is a computer security technique which involves **randomly positioning** the base address of an executable and the position of libraries, heap, and stack, in a process's address space.
+
+## 1.2 ASLR on Linux
+
+On linux, you can inspect the mappings of a process given its pid through [procfs](https://www.kernel.org/doc/Documentation/filesystems/proc.txt), by reading the file `/proc/<pid>/maps`.
+
+If you are a process and you want to know your own memory mappings, you can read `/proc/<pid>/maps`.
+
+For example, you can try to read `/proc/self/maps` with `cat`:
+
+```
+root@088ec31b2ce9:/home/ctf/challenge# cat /proc/self/maps
+55faeb01c000-55faeb01e000 r--p 00000000 fe:01 2497233                    /usr/bin/cat
+55faeb01e000-55faeb023000 r-xp 00002000 fe:01 2497233                    /usr/bin/cat
+55faeb023000-55faeb026000 r--p 00007000 fe:01 2497233                    /usr/bin/cat
+55faeb026000-55faeb027000 r--p 00009000 fe:01 2497233                    /usr/bin/cat
+55faeb027000-55faeb028000 rw-p 0000a000 fe:01 2497233                    /usr/bin/cat
+55faeb115000-55faeb136000 rw-p 00000000 00:00 0                          [heap]
+7fe15dfb1000-7fe15dfd5000 rw-p 00000000 00:00 0
+7fe15dfd5000-7fe15dffb000 r--p 00000000 fe:01 2761561                    /usr/lib/x86_64-linux-gnu/libc-2.33.so
+7fe15dffb000-7fe15e166000 r-xp 00026000 fe:01 2761561                    /usr/lib/x86_64-linux-gnu/libc-2.33.so
+7fe15e166000-7fe15e1b2000 r--p 00191000 fe:01 2761561                    /usr/lib/x86_64-linux-gnu/libc-2.33.so
+7fe15e1b2000-7fe15e1b5000 r--p 001dc000 fe:01 2761561                    /usr/lib/x86_64-linux-gnu/libc-2.33.so
+7fe15e1b5000-7fe15e1b8000 rw-p 001df000 fe:01 2761561                    /usr/lib/x86_64-linux-gnu/libc-2.33.so
+7fe15e1b8000-7fe15e1c3000 rw-p 00000000 00:00 0
+7fe15e1c7000-7fe15e1c8000 r--p 00000000 fe:01 2761539                    /usr/lib/x86_64-linux-gnu/ld-2.33.so
+7fe15e1c8000-7fe15e1ef000 r-xp 00001000 fe:01 2761539                    /usr/lib/x86_64-linux-gnu/ld-2.33.so
+7fe15e1ef000-7fe15e1f9000 r--p 00028000 fe:01 2761539                    /usr/lib/x86_64-linux-gnu/ld-2.33.so
+7fe15e1f9000-7fe15e1fb000 r--p 00031000 fe:01 2761539                    /usr/lib/x86_64-linux-gnu/ld-2.33.so
+7fe15e1fb000-7fe15e1fd000 rw-p 00033000 fe:01 2761539                    /usr/lib/x86_64-linux-gnu/ld-2.33.so
+7fff4388f000-7fff438b0000 rw-p 00000000 00:00 0                          [stack]
+7fff43989000-7fff4398d000 r--p 00000000 00:00 0                          [vvar]
+7fff4398d000-7fff4398f000 r-xp 00000000 00:00 0                          [vdso]
+ffffffffff600000-ffffffffff601000 r-xp 00000000 00:00 0                  [vsyscall]
+
+root@088ec31b2ce9:/home/ctf/challenge# cat /proc/self/maps
+55ffc0b1b000-55ffc0b1d000 r--p 00000000 fe:01 2497233                    /usr/bin/cat
+55ffc0b1d000-55ffc0b22000 r-xp 00002000 fe:01 2497233                    /usr/bin/cat
+55ffc0b22000-55ffc0b25000 r--p 00007000 fe:01 2497233                    /usr/bin/cat
+55ffc0b25000-55ffc0b26000 r--p 00009000 fe:01 2497233                    /usr/bin/cat
+55ffc0b26000-55ffc0b27000 rw-p 0000a000 fe:01 2497233                    /usr/bin/cat
+55ffc2108000-55ffc2129000 rw-p 00000000 00:00 0                          [heap]
+7f1ec6e0f000-7f1ec6e33000 rw-p 00000000 00:00 0
+7f1ec6e33000-7f1ec6e59000 r--p 00000000 fe:01 2761561                    /usr/lib/x86_64-linux-gnu/libc-2.33.so
+7f1ec6e59000-7f1ec6fc4000 r-xp 00026000 fe:01 2761561                    /usr/lib/x86_64-linux-gnu/libc-2.33.so
+7f1ec6fc4000-7f1ec7010000 r--p 00191000 fe:01 2761561                    /usr/lib/x86_64-linux-gnu/libc-2.33.so
+7f1ec7010000-7f1ec7013000 r--p 001dc000 fe:01 2761561                    /usr/lib/x86_64-linux-gnu/libc-2.33.so
+7f1ec7013000-7f1ec7016000 rw-p 001df000 fe:01 2761561                    /usr/lib/x86_64-linux-gnu/libc-2.33.so
+7f1ec7016000-7f1ec7021000 rw-p 00000000 00:00 0
+7f1ec7025000-7f1ec7026000 r--p 00000000 fe:01 2761539                    /usr/lib/x86_64-linux-gnu/ld-2.33.so
+7f1ec7026000-7f1ec704d000 r-xp 00001000 fe:01 2761539                    /usr/lib/x86_64-linux-gnu/ld-2.33.so
+7f1ec704d000-7f1ec7057000 r--p 00028000 fe:01 2761539                    /usr/lib/x86_64-linux-gnu/ld-2.33.so
+7f1ec7057000-7f1ec7059000 r--p 00031000 fe:01 2761539                    /usr/lib/x86_64-linux-gnu/ld-2.33.so
+7f1ec7059000-7f1ec705b000 rw-p 00033000 fe:01 2761539                    /usr/lib/x86_64-linux-gnu/ld-2.33.so
+7ffc72fa4000-7ffc72fc5000 rw-p 00000000 00:00 0                          [stack]
+7ffc72fe7000-7ffc72feb000 r--p 00000000 00:00 0                          [vvar]
+7ffc72feb000-7ffc72fed000 r-xp 00000000 00:00 0                          [vdso]
+ffffffffff600000-ffffffffff601000 r-xp 00000000 00:00 0                  [vsyscall]
+```
+
+### Memory mappings patterns
+
+If you do this a couple of times, you could deduce that:
+* The binary PIE base should be in the range 0x00005500_00000000-0x00005700_00000000, which means 2TB of possible addresses.
+* The heap is near the binary.
+* Libraries fall in the range 0x00007f00_00000000 - 0x00007fff_ffffffff, 1TB of possible addresses.
+* Stack goes \(most of the time\) in the range 0x00007ffc_00000000 - 0x00007fff_ffffffff, 16gb of possible addresses.
+* The range 0xffffffffff600000 - 0xffffffffff601000 is always mapped, you can read [this article](http://terenceli.github.io/%E6%8A%80%E6%9C%AF/2019/02/13/vsyscall-and-vdso) if you are curious about what it is.
+
+## 1.3 How to bypass ASLR without an infoleak
+
+Let's discuss what you can do to bypass ASLR when no information leak is possble.
+
+This is my attempt to summarize what I got from reading Saelo's blogpost.
+
+To bypass ASLR you need:
+* A memory spraying technique, which lets you map contiguous memory of a given size, on a given range of addresses.
+  
+  As [he says](https://googleprojectzero.blogspot.com/2020/01/remote-iphone-exploitation-part-2.html#:~:text=By%20abusing%20a%20memory%20leak%20(not%20an%20information%20leak!)%2C%20a%20bug%20in%20which%20a%20chunk%20of%20memory%20is%20%E2%80%9Cforgotten%E2%80%9D%20and%20never%20freed%2C%20and%20triggering%20it%20multiple%20times%20until%20the%20desired%20amount%20of%20memory%20has%20been%20leaked.) there are two ways of doing it:
+  1. By abusing a memory leak (not an information leak!), a bug in which a chunk of memory is “forgotten” and never freed, and triggering it multiple times until the desired amount of memory has been leaked.
+  2. By finding and abusing an “amplification gadget”: a piece of code that takes an existing chunk of data and copies it, potentially multiple times, thus allowing the attacker to spray a large amount of memory by only sending a relatively small number of bytes.
+* An `isAddressMapped` oracle, which given an address tells you wheter or not that address is mapped.
+
+To 
+```python
+
+def find_mapped_address(a, b , sizeOfSpray):
+  for probeAddr in range(a, b, sizeOfSpray):
+    if isAddrMapped(probeAddr) == True:
+      print (f"Found mapped address: {probeAddr:#x}")
+      return probeAddr
+
+```
+
+for a total of `numOfQueries = (b - a + 1) // sizeOfSpray` queries to the oracle in the worst case.
+
+
+### PoC of ASLR bypass on Linux
+
+On Linux, it is possible to completely break ASLR if you are able to allocate 16TB of memory.
+
+```C
+#include <stdio.h>
+#include <stdlib.h>
+
+int main()
+{
+    // 64gb
+    size_t size = 0x1000000000;
+
+    // 16TB allocations
+    for (int i = 0; i < 256; i++) {
+        void *mem = malloc(size); // this actually calls mmap because size is big
+        if (!mem) {
+            puts("Failed");
+            return 1;
+        }
+        printf("%p\n", mem);
+    }
+
+    unsigned int *mem = (void*)0x7f0000000000ULL;
+    *mem = 0x41414141;
+    printf("R/W to %p: %x\n", mem, *mem);
+
+    return 0;
+}
+```
+
+If you look at the addresses returned by malloc you can better understand what is happening. Protip: look at the most significant bytes.
+
+| mem | boundary cross
+| - |-
+|0x7fb03b55e010| No
+|0x7fa03b55d010| No
+|0x7f903b55c010| No
+|0x7f803b55b010| No
+|0x7f703b55a010| No
+|0x7f603b559010| No
+|0x7f503b558010| No
+|0x7f403b557010| No
+|0x7f303b556010| No
+|0x7f203b555010| No
+|0x7f103b554010| No
+|0x7f003b553010| No
+|0x7ef03b552010| Yes
+|0x7ee03b551010| Yes
+|0x7ed03b550010| Yes
+|0x7ec03b54f010| Yes
+
+The poc is exploiting the fact that, at some point, the most significant byte of the address returned changes from 7F to 7E.
+
+# 2 The challenge
 
 Thankfully to the author, the zip contains binaries, source code and dockerfile to reproduce the same environment as the remote one.
 
 <p align="center"> <img src="./images/intro-dist-files.png" width="50%"><p/> <br/>
 
-## 0.2 Initial foothold
+## 2.1 Initial foothold
 
-Before jumping into the challenge, It's always a good thing to grasp some knowledge about the environment, let's scroll through the files and take some notes.
+It's always a good thing to grasp some knowledge about the environment, let's scroll through the files and take some notes.
 
 * jail.cfg set some restrictions, let's not forget about those limits since they might screw up the exploit:
   ```yaml
@@ -56,7 +210,7 @@ Before jumping into the challenge, It's always a good thing to grasp some knowle
   <p align="center"> <img src="./images/checksec.png"><br/> <i></i></p>
   Sweet, libkylezip.so is compiled with Partial RELRO, that means that the GOT is writable, keep that in mind for when we want to get code execution.
 
-## 0.3 Setup the local environment and poke the application
+## 2.2 Setup the local environment and poke the application
 
 docker-compose.yml file is provided so it is not hard at all to get a working local environment to poke. For those of you that are not confident with docker here is the list of commands you need to know to poke the challenge locally.
 
@@ -72,88 +226,231 @@ docker exec -it <CONTAINER ID> <COMMAND> # exec COMMAND into the container
 After doing `docker-compose build` you can execute `docker-compose up` to start the container, and connect to the challenge with `nc 127.0.0.1 9000`
 <p align="center"> <img src="./images/docker-up-nc.png" ><br/> <i></i><p/> 
 
-# 1. Application of Saelo blogpost on Linux
+# 3. Source code analysis
 
-Since the author hints to read the blogpost about the [ASLR bypass](https://googleprojectzero.blogspot.com/2020/01/remote-iphone-exploitation-part-2.html), it's not a bad idea to start by reading it.
+Now that we have some basic knowledge about what we should do in order to bypass ASLR, let's look at the source code, keeping in mind that we want to:
+* a way to spray memory in known ranges of memory
+* an isAddrMapped oracle
 
-I definitely can't explain as well as Saelo did, so read it if you want to understand it well. But that's my attempt to explain what I got from reading it, keeping in mind that I wanted to apply this bypass to Linux.
+<p align="center"> <img src="./images/source-code-folder.png" width="50%"><br/> <i> Source code folder </i><p/> 
 
-You need two things to bypass ASLR:
+It's mostly glue code to get an oatpp web server up and running, in fact the important files which we are gonna analyze are:
+* src/controller/MyController.*
+* kylezip/decompress.*
 
-* A memory spraying technique, and as [he says](https://googleprojectzero.blogspot.com/2020/01/remote-iphone-exploitation-part-2.html#:~:text=By%20abusing%20a%20memory%20leak%20(not%20an%20information%20leak!)%2C%20a%20bug%20in%20which%20a%20chunk%20of%20memory%20is%20%E2%80%9Cforgotten%E2%80%9D%20and%20never%20freed%2C%20and%20triggering%20it%20multiple%20times%20until%20the%20desired%20amount%20of%20memory%20has%20been%20leaked.) there are two ways of doing it:
-  1. By abusing a memory leak (not an information leak!), a bug in which a chunk of memory is “forgotten” and never freed, and triggering it multiple times until the desired amount of memory has been leaked.
-  2. By finding and abusing an “amplification gadget”: a piece of code that takes an existing chunk of data and copies it, potentially multiple times, thus allowing the attacker to spray a large amount of memory by only sending a relatively small number of bytes.
+## 3.1 MyController
 
-* An oracle, which tells you wheter or not a given address is mapped, something like that:
-  ```py
-  def oracle(addr): 
-    if isMapped(addr):
-        print ("YES")
-    else
-        print ("NO")
+<p align="center"> <img src="./images/MyControllerHpp.png"><br/> <i>MyController.hpp</i><p/> 
+
+There are 3 endpoints:
+* `/`
+* `GET /files/{fileId}` -> Download a previously uploaded file, if extract is true extract before downloading it.
+* `POST /upload/{fileId}` -> Upload a file given a {fileId}.
+
+And one function implemented in `MyController.cpp`
+```C
+std::shared_ptr<oatpp::base::StrBuffer> MyController::get_file(int file_id, bool extract) 
+``` 
+which:
+* Set `to_open` to `{file_id}` or `{file_id}.unkyle`
+  ```C
+  std::ostringstream comp_fname;
+  comp_fname << filename;
+  if (extract) {
+    // Want the un-kylezip-d version
+    comp_fname << ".unkyle";
+  }
+  auto to_open = comp_fname.str();
   ```
 
-On iOS 12.4 you could completely break ASLR by allocating 256mb of memory, as explained [here](https://googleprojectzero.blogspot.com/2020/01/remote-iphone-exploitation-part-2.html#:~:text=In%20fact%2C%20only%20about%20256MB%20of%20data%20need%20to%20be%20sprayed%20to%20put%20controlled%20data%20at%20a%20known%20address)
+* If it's the first time we are requesting to extract `{file_id}` then it calls decompress on it,
+  which will write the decompressed file of `{file_id}` to `{file_id}.unkyle`.
+  ```C
+  int fd = open(to_open.c_str(), O_RDONLY);
+  if (fd == -1) {
+      if (!extract) return NULL;
+
+      /* Need to create decompressed version of file
+       * Kyle gave me a buggy library so we are going to fork
+       * in case we crash the web server will still stay up.
+       */
+      pid_t p = fork();
+      if (p == 0) {
+        decompress(filename);
+        exit(0);
+      } else {
+        waitpid(p, NULL, 0);
+      }
+
+
+      fd = open(to_open.c_str(), O_RDONLY);
+      if (fd == -1) {
+        return NULL;
+      }
+  }
+  ```
+
+* In the end `mmap` the result in memory.
+  ```C
+  struct stat sb;
+  
+  if (fstat(fd, &sb) != 0) {
+      return NULL;
+  }
+  
+  /* mmap the file in for performance, or something... idk kyle made me write this */
+  // 
+  void *mem = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+  ```
+
+### Observations
+
+* [fork()](https://man7.org/linux/man-pages/man2/fork.2.html) creates a new process by duplicating the calling process, at the time of fork() both memory spaces have the same content.
+
+  So if we are able to turn decompress() to an oracle which:
+  * Crashes on bad addresses
+  * Doesn't crash on nice addresses
+
+  We could use that primitive to infer the memory space of the parent.
+
+* There is a call to `mmap` in the parent process:
+  ```C
+  void *mem = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+  
+  ``` 
+  if we can control `sb.st_size`, which is the size of the decompressed file, we could easily turn it into a memory spraying primitive.
+
+## 3.1 decompress
+
+This is what gets compiled into `libkayle.so`, here it is an overview of what it does.
 
 ```C
-    const size_t size = 0x4000;
-    const size_t count = (256 * 1024 * 1024) / size;
-    for (int i = 0; i < count; i++) {
-        int* chunk = malloc(size);
-        *chunk = 0x41414141;
-    }
-   // Now look at the memory at 0x110000000
+int decompress(const char *fname)
 ```
 
-Running this in on iOS (e.g. as part of a custom App) will put 0x41414141 at address 0x110000000:
+* Map the input file to the address `0x42069000000`.
+* Map the output file to the address `0x13371337000`.
+* Calls do_decompress() which gets the decompression done.
+
+```C
+static void do_decompress(char *out, char *in, size_t insize)
 ```
-(lldb) x/gx 0x110000000
-0x110000000: 0x0000000041414141
+You can view this function as a simple *virtual machine*, which executes the bytecode `in` and writes the output to `out`.
+
+This VM has 4 opcodes:
+* 0 -> NOP.
+* 
+* 1 -> STORE(u8 b). 
+  
+  writes `b` to `out`, increments out by `1`.
+  
+  Implementation:
+  ```C
+  case 1: {
+      // Write byte
+      uint8_t b = in[cur++];
+      *(out++) = b;
+      break;
+  }
+  ```   
+
+* 2 -> SEEK(u64 off):
+  set `out` to `out + off`. 
+  
+  `out` and `off` are 64 bit values, so `out = out+off` is equivalent to `out = (out+off) % MAX_64BIT_VALUE`, this is called `integer overflow` and we can exploit this behaviour to always reach any 64 bit value. Example:
+  ```py
+  M64 = 0xFFFFFFFF_FFFFFFFF # maximum 64 bit value
+  def get_off(out: int, target: int):
+    return (target - out) % M64
+  
+  # We are at 0xffffffff, what can we add to reach 0?
+  print ('{:#x}'.format(get_off(0xffffffff, 0)))
+  # Try it yourself :)
+  ```
+
+  Implementation:
+  ```C
+  case 2: {
+    // Seek
+    uint64_t off = *(uint64_t*)(&in[cur]);
+    cur += sizeof(off);
+    out += off;
+    break;
+  }
+  ``` 
+
+* 3 -> LOAD(off, size). 
+  Copy `size` bytes from `out - off` to `out`, increment `out` by 8.
+
+  Implementation:
+  ```C
+  case 3: {
+    // Copy some previously written bytes
+    uint64_t off = *(uint64_t*)(&in[cur]);
+    cur += sizeof(off);
+    uint64_t count = *(uint64_t*)(&in[cur]);
+    cur += sizeof(off);
+    memcpy(out, out-off, count);
+    out += count;
+    break;
+  }
+  ```
+
+There are no bounds check in any of the operation, that gives us 2 useful primitives:
+* Read What Where, abusing `SEEK+LOAD`
+* Write What Where: abusing `SEEK+STORE`
+
+I used this code to build the bytecode:
+```py
+IN_ADDR = 0x42069000000 # PROT R
+OUT_ADDR = 0x13371337000 # PROT RW
+M64 = (1<<64)-1
+
+class CompressedFile():
+    __slots__ = ['cur', 'content', 'out']
+
+    def __init__(self, filesize):
+        self.cur = 16
+        self.content = b''
+        self.content += p64(0x0123456789abcdef) # magic
+        self.content += p64(filesize) # file size
+        self.out = OUT_ADDR
+
+    def nop(self):
+        self.content += b'\x00' # cmd0
+        self.cur += 1
+
+    def write(self, b: bytes):
+        assert len(b) == 1
+
+        self.content += b'\x01' + b # cmd1 + byte
+        self.cur += 2
+        self.out += 1 & M64
+
+    def seek(self, off):
+        self.content += b'\x02' # cmd2
+        self.content += p64(off) # offset
+        self.cur += 9
+        self.out += off & M64
+
+    def memcpy(self, off, count):
+        # memcpy(out, out-off, count);
+        self.content += b'\x03' # cmd33
+        self.content += p64(off) # offset
+        self.content += p64(count) # offset
+        self.cur += 17
+        self.out += count & M64
 ```
+## 4 Poking the challenge
 
-Of course we can't copy paste this technique to Linux and expect it to work, in fact aslr on Linux is not that weak. But we can get some intuitions about [the technique he describes there](https://googleprojectzero.blogspot.com/2020/01/remote-iphone-exploitation-part-2.html#:~:text=Given%20that%2C%20breaking%20ASLR%20remotely%20would%20be%20rather%20straightforward%3A).
-
-Given: 
-* a range of possible addresses `[a,b]`
-* a memory spraying technique that let you map contiguous memory of size `size`, in the range `[a,b]`
-* an isAddressMapped oracle 
-
-then in order to find a mapped address you can do this linear scan:
-```python
-for probeAddr in range(a, b, size):
-    if isAddrMapped(probeAddr) == True:
-        print (f"Found mapped address: {probeAddr:#x}")
-        break
-```
-
-for a total of `numOfQueries = (b - a + 1) / size` queries.
-
-## 1.1 Memory mappings on linux usermode applications
-
-Let's try grasp some knowledge about the memory layout, maybe some patterns exist also there?
-
-On linux, you can inspect the mappings of a process given its pid through procfs
-```
-cat /proc/<pid>/maps
-```
-
+## 4.1 Inspect the memory on the challenge
 To do this, spawn a local instance of the challenge and read the process maps. That was my setup for the ctf:
 
 <p align="center"> <img src="./images/read-proc-mappings.png" ><br/> <i></i><p/> 
 
-Well, if you do this a couple of times, you will be confident enough of those things at least:
-* The binary PIE base can be in the range 0x00005500_00000000-0x00005700_00000000, that means 2TB of possible addresses.
-* The heap is near the binary.
-* Libraries are in the range 0x00007f00_00000000 - 0x00007fff_ffffffff, for a total of 1TB of possible addresses.
-* Stack goes in the range 0x00007fff_00000000 - 0x00007fff_ffffffff, for a total of only 4gb of possible addresses, well that's weaker.
-* The range 0xffffffffff600000 - 0xffffffffff601000 is always mapped, you can read [this article](http://terenceli.github.io/%E6%8A%80%E6%9C%AF/2019/02/13/vsyscall-and-vdso) if you are curious about it.
+### Linear scan the stack
 
-
-
-## 1.2 Applicability of memory spraying + linear scan
-
-Given those not so randomly looking memory mappings, we can calculate some .
-
+Let's try to target the stack range 0x00007fff_00000000 - 0x00007fff_ffffffff, because it is the smaller
 ```py
 def getNumberOfQueries(a, b, size):
     return (b - a + 1) // size
@@ -179,106 +476,3 @@ Let's try to visualize what is happening:
 
 We are basically bruteforcing the 5th byte of the address, exploiting the fact that there must be a contiguous range of memory which is 4gb long. Don't worry if that's not clear enough for now, we're gonna try this on a real target.
 
-# 2. Source code analysis
-<p align="center"> <img src="./images/source-code-folder.png" width="50%"><br/> <i></i><p/> 
-
-After all that's a ctf challenge, so the source code is not as huge as a real application, it's mostly glue code to get an oatpp web server up and running. 
-
-In fact the important files which we are gonna analyze are:
-* src/controller/MyController.*
-* kylezip/decompress.*
-
-## 1.1 MyController
-
-<p align="center"> <img src="./images/MyControllerHpp.png"><br/> <i>MyController.hpp</i><p/> 
-
-There are 3 endpoints:
-* /
-* GET /files/{fileId} -> Download a prevoiusly uploaded file, if extract is true extract before downloading it.
-* POST /upload/{fileId} -> Upload a file given a {fileId}.
-
-And one function implemented in `MyController.cpp`
-```C
-std::shared_ptr<oatpp::base::StrBuffer> MyController::get_file(int file_id, bool extract) 
-``` 
-I'm gonna highlight what's useful to us:
-* Set `to_open` to `{file_id}` or `{file_id}.unkyle`
-  ```C
-  std::ostringstream comp_fname;
-  comp_fname << filename;
-  if (extract) {
-    // Want the un-kylezip-d version
-    comp_fname << ".unkyle";
-  }
-  auto to_open = comp_fname.str();
-  ```
-* If it's the first time we are requesting to extract this file_id then it calls decompress \(from `libkyle.so`\) on it,
-  which will write the decompressed version of `{filename}` to `{filename}.unkyle`.
-  ```C
-  int fd = open(to_open.c_str(), O_RDONLY);
-  if (fd == -1) {
-      if (!extract) return NULL;
-
-      /* Need to create decompressed version of file
-       * Kyle gave me a buggy library so we are going to fork
-       * in case we crash the web server will still stay up.
-       */
-      pid_t p = fork();
-      if (p == 0) {
-        decompress(filename);
-        exit(0);
-      } else {
-        waitpid(p, NULL, 0);
-      }
-
-
-      fd = open(to_open.c_str(), O_RDONLY);
-      if (fd == -1) {
-        return NULL;
-      }
-  }
-  ```
-* lol
-  ```C
-  ```
-
-```C
-std::shared_ptr<oatpp::base::StrBuffer> MyController::get_file(int file_id, bool extract) {
-  
-  int fd = open(to_open.c_str(), O_RDONLY);
-  if (fd == -1) { // It's the first time we are requesting to extract this file_id
-      if (!extract) return NULL;
-
-      /* Need to create decompressed version of file
-       * Kyle gave me a buggy library so we are going to fork
-       * in case we crash the web server will still stay up.
-       */
-      pid_t p = fork();
-      if (p == 0) {
-        decompress(filename);
-        exit(0);
-      } else {
-        waitpid(p, NULL, 0);
-      }
-
-
-      fd = open(to_open.c_str(), O_RDONLY);
-      if (fd == -1) {
-        return NULL;
-      }
-  }
-
-  struct stat sb;
-  
-  if (fstat(fd, &sb) != 0) {
-      return NULL;
-  }
-  
-  /* mmap the file in for performance, or something... idk kyle made me write this */
-  // 
-  void *mem = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
-  if (mem == NULL) return NULL;
-  
-  ...
-
-}```
