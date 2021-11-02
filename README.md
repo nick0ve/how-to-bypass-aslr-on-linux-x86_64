@@ -376,10 +376,18 @@ This VM has 4 opcodes:
   M64 = (1<<64) # Maximum 64bit value
   def get_off(out: int, target: int):
     return (target-out) % M64
-
+  
   # We are at 0xffffffff, what can we add to reach 0?
   print ('{:#x}'.format(get_off(0xffffffff, 0)))
   # Result = 0xffffffff00000001
+
+  # That's the same as doing this
+  M64 = (1<<64)-1 # Maximum 64bit value
+  def get_off(out: int, target: int):
+    return (target-out) & M64
+  
+  print ('{:#x}'.format(get_off(0xffffffff, 0)))
+
   ```
 
   Opcode implementation:
@@ -439,13 +447,12 @@ class CompressedFile():
 
         self.content += b'\x01' + b
         self.cur += 2
-        self.out += 1 & M64
+        self.out += 1
 
     def seek(self, off):
         self.content += b'\x02'
         self.content += p64(off)
         self.cur += 9
-        self.out += off & M64
 
     def memcpy(self, off, count):
         # memcpy(out, out-off, count);
@@ -453,7 +460,6 @@ class CompressedFile():
         self.content += p64(off)
         self.content += p64(count)
         self.cur += 17
-        self.out += count & M64
 ```
 
 # 4. Interacting with the binary
