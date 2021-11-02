@@ -375,11 +375,11 @@ This VM has 4 opcodes:
   ```py
   M64 = (1<<64) # Maximum 64bit value
   def get_off(out: int, target: int):
-    return (target-out)
+    return (target-out) % M64
 
   # We are at 0xffffffff, what can we add to reach 0?
   print ('{:#x}'.format(get_off(0xffffffff, 0)))
-  # Result = 0xffffffff00000000
+  # Result = 0xffffffff00000001
   ```
 
   Opcode implementation:
