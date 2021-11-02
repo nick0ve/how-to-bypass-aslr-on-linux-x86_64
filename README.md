@@ -564,8 +564,7 @@ the result memory mappings will be something like this:
 ### Memory Spray result
 ```
 root@088ec31b2ce9:/home/ctf/challenge# cat /proc/`pgrep flag_server-exe`/maps
-...
-
+... My spray: ...
 7fe2dc000000-7fe2e0000000 r--p 00000000 00:af 121                        /challenge/files/59.unkyle
 7fe2e0000000-7fe2e4000000 r--p 00000000 00:af 119                        /challenge/files/58.unkyle
 7fe2e4000000-7fe2e8000000 r--p 00000000 00:af 117                        /challenge/files/57.unkyle
@@ -630,6 +629,20 @@ root@088ec31b2ce9:/home/ctf/challenge# cat /proc/`pgrep flag_server-exe`/maps
 7fe3cc000000-7fe3d0000000 r--p 00000000 00:af 3                          /challenge/files/0.unkyle
 7fe3d0000000-7fe3d01a8000 rw-p 00000000 00:00 0
 7fe3d01a8000-7fe3d4000000 ---p 00000000 00:00 0
+
+... Libraries: ...
+
+7fe3d6a1e000-7fe3d6a1f000 r--p 00000000 fe:01 1445947                    /challenge/libkylezip.so
+7fe3d6a1f000-7fe3d6a20000 r-xp 00001000 fe:01 1445947                    /challenge/libkylezip.so
+7fe3d6a20000-7fe3d6a21000 r--p 00002000 fe:01 1445947                    /challenge/libkylezip.so
+7fe3d6a21000-7fe3d6a22000 r--p 00002000 fe:01 1445947                    /challenge/libkylezip.so
+7fe3d6a22000-7fe3d6a23000 rw-p 00003000 fe:01 1445947                    /challenge/libkylezip.so
+7fe3d6a23000-7fe3d6a25000 rw-p 00000000 00:00 0
+7fe3d6a25000-7fe3d6a26000 r--p 00000000 fe:01 2761539                    /lib/x86_64-linux-gnu/ld-2.33.so
+7fe3d6a26000-7fe3d6a4d000 r-xp 00001000 fe:01 2761539                    /lib/x86_64-linux-gnu/ld-2.33.so
+7fe3d6a4d000-7fe3d6a57000 r--p 00028000 fe:01 2761539                    /lib/x86_64-linux-gnu/ld-2.33.so
+7fe3d6a57000-7fe3d6a59000 r--p 00031000 fe:01 2761539                    /lib/x86_64-linux-gnu/ld-2.33.so
+7fe3d6a59000-7fe3d6a5b000 rw-p 00033000 fe:01 2761539                    /lib/x86_64-linux-gnu/ld-2.33.so
 
 ...
 
