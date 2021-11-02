@@ -470,7 +470,7 @@ def getFile(fileid: int, extract="true"):
 
 ### Inspect the memory mappings of the challenge
 
-That was very important to me when trying to solve the challenge, I starred at the memory mappings for a lot of time.
+That was very important to me when trying to solve the challenge, I stared at the memory mappings for a lot of time.
 
 To do this, you can spawn a local instance of the challenge and read the process maps after doing some operations.
 
@@ -668,7 +668,7 @@ while isMapped == False:
     j -= 1
 ```
 
-At this point, we have `leakAddr` which is a mapped address like this: `0x7fXX00000000`, in [this](Memory-Spray-result) case, `leakAddr = 0x7fe300000000`. 
+At this point, we have `leakAddr` which is a mapped address like this: `0x7fXX00000000`, in [this](#memory-spray-result) case, `leakAddr = 0x7fe300000000`. 
 
 Now, if we want to follow the saelo technique, we should do a binary search of the range 0x7fXX00000000 - 0x7fXXffffffff, in order to find lower and upper bounds, the problem is that there are some holes in that range, so the binary search fails a lot of times.
 
