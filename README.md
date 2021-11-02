@@ -780,7 +780,7 @@ To achieve code execution I overwrote libkayle.so's memcpy@got entry with system
 
 ### Get libkayle base
 Luckily for us libc base and libkayle.so base are at a constant offset from the lastMappedPage, I didn't know that was the case so I wrote a egghunter which search for `\x7fELF` \(Header of ELF executables\), which in the end wasn't useful.
-```
+```py
     # Scan backwards looking for b'\x7fELF'
     i = 0
     numElf = 0
