@@ -134,6 +134,16 @@ int main()
 }
 ```
 
+
+### Note about glibc memory allocation
+
+From [man malloc](https://man7.org/linux/man-pages/man3/realloc.3.html) notes:
+- Normally, malloc() allocates memory from the heap, and adjusts the size of the heap as required, using sbrk(2). When allocating blocks of memory larger than MMAP_THRESHOLD bytes, the glibc malloc() implementation allocates the memory as a private anonymous mapping using mmap(2). MMAP_THRESHOLD is 128 kB by default, but is adjustable using mallopt(3). Allocations performed using mmap(2) are unaffected by the RLIMIT_DATA resource limit (see getrlimit(2)).
+
+So `void *mem = malloc(size)` will end up calling `mmap(size + malloc_metadata_size, ...)`
+
+Since libraries are mapped into the process through mmap by `ld`, those allocations will end up near the libraries.
+
 ### Boundary cross trick
 If you look at the addresses returned by malloc you can better understand what is happening. Protip: look at the most significant bytes.
 
@@ -772,7 +782,7 @@ def linearFindLargest(base, increment, idstart):
             print ('Yes')
             return i*increment
         print ('No')
-    raise Exception("find_largest should not fail")
+    raise Exception("linearFindLargest should not fail")
   
 # Find upper bound, we can't do a binary search because there are some holes which
 # screw things up
@@ -789,10 +799,10 @@ print (f"{lastMappedPage = :#x}")
 
 Finally, we know everything we need about the memory mappings, now it is just a matter of leveraging a write what where primitive into code execution.
 
-To achieve code execution I overwrote libkayle.so's memcpy@got entry with system@libc.
+To achieve code execution I overwrote libkyle.so's memcpy@got entry with system@libc.
 
-### Get libkayle base
-Luckily for us libc base and libkayle.so base are at a constant offset from the lastMappedPage, I didn't know that was the case so I wrote a egghunter which search for `\x7fELF` \(Header of ELF executables\), which in the end wasn't useful.
+### Get libkyle base
+Luckily for us libc base and libkyle.so base are at a constant offset from the lastMappedPage, I didn't know that was the case so I wrote a egghunter which search for `\x7fELF` \(Header of ELF executables\), which in the end wasn't useful.
 ```py
     # Scan backwards looking for b'\x7fELF'
     i = 0
@@ -813,7 +823,7 @@ Luckily for us libc base and libkayle.so base are at a constant offset from the 
         i += 1
 ```
 
-### Overwrite libkayle's memcpy@got and get RCE
+### Overwrite libkyle's memcpy@got and get RCE
 
 Fortunately overwriting memcpy@got with system was good enough to get the flag and claim that juicy bounty :)
 
