@@ -329,8 +329,8 @@ which:
 int decompress(const char *fname)
 ```
 
-* Map the input file to the address `0x42069000000`.
-* Map the output file to the address `0x13371337000`.
+* Maps the input file to the address `0x42069000000`.
+* Maps the output file to the address `0x13371337000`.
 * Calls do_decompress() which gets the decompression done.
 
 The file is expected to be in the format:
