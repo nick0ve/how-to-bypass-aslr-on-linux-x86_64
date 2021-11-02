@@ -22,7 +22,7 @@ I couldn't help him, but I took a look at pwnable challenges, and figured it wou
 
 On linux, you can inspect the mappings of a process given its pid through [procfs](https://www.kernel.org/doc/Documentation/filesystems/proc.txt), by reading the file `/proc/<pid>/maps`.
 
-If you are a process and you want to know your own memory mappings, you can read `/proc/<pid>/maps`.
+If you are a process and you want to know your own memory mappings, you can read `/proc/self/maps`.
 
 For example, you can try to read `/proc/self/maps` with `cat`:
 
